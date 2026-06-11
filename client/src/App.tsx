@@ -3,18 +3,36 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { Footer } from "./components/Footer";
+import { Navbar } from "./components/Navbar";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import Explore from "./pages/Explore";
+import PoseDetail from "./pages/PoseDetail";
+import AIRecommend from "./pages/AIRecommend";
+import MoodBoard from "./pages/MoodBoard";
+import Login from "./pages/Login";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <main className="flex-1">
+        <Switch>
+          <Route path={"/"} component={Home} />
+          <Route path={"/explore"} component={Explore} />
+          <Route path={"/pose/:id"} component={PoseDetail} />
+          <Route path={"/ai-recommend"} component={AIRecommend} />
+          <Route path={"/moodboard"} component={MoodBoard} />
+          <Route path={"/login"} component={Login} />
+          <Route path={"/404"} component={NotFound} />
+          {/* Final fallback route */}
+          <Route component={NotFound} />
+        </Switch>
+      </main>
+      <Footer />
+    </div>
   );
 }
 
