@@ -1,25 +1,35 @@
 import QueryBuilderService from "./QueryBuilderService.js";
 import PexelsService from "./PexelsService.js";
-import DuplicateRemovalService from "./DuplicateRemovalService.js";
-import ImageCacheService from "./ImageCacheService.js";
-import ImageRankingEngine from "./ImageRankingEngine.js";
-import { getCLIPTextEmbedding } from "./aiService.js";
-import { imageProcessorQueue } from "./ImageProcessorQueue.js";
+import DuplicateService from "./DuplicateService.js";
+import CacheService from "./CacheService.js";
+import SearchHistory from "../models/SearchHistory.js";
 import Pose from "../models/Pose.js";
 
 export class SearchService {
-  static async executeSearch({ category, filters = {}, page = 1 }) {
+  static async executeSearch({ category, filters = {}, page = 1, user = "Anonymous" }) {
     if (!category) {
       throw new Error("Category parameter is required");
     }
 
+    const startTime = Date.now();
     const cleanCategory = category.toLowerCase().trim();
+
+    // Step 2 & 3: Generate 3 optimized queries
+    const queries = QueryBuilderService.generateThreeQueries(cleanCategory);
+    const primaryQuery = queries[0];
+
+    // Step 17: Log search history entry
+    await SearchHistory.create({
+      user,
+      category: cleanCategory,
+      generatedQuery: primaryQuery,
+      timestamp: new Date()
+    });
 
     // ==========================================
     // Caching Rule: Check database first
     // ==========================================
-    console.log(`[SearchService] Querying MongoDB local cache for: "${category}"...`);
-    const searchRegex = new RegExp(category.split(/\s+/).join("|"), "i");
+    const searchRegex = new RegExp(cleanCategory.split(/\s+/).join("|"), "i");
     let dbMatches = await Pose.find({
       $or: [
         { category: { $regex: searchRegex } },
@@ -28,119 +38,79 @@ export class SearchService {
       ]
     });
 
-    const optimizedQueries = QueryBuilderService.generateFiveQueries(category, filters);
-    const primaryQuery = optimizedQueries[0];
-    const queryEmbedding = await getCLIPTextEmbedding(primaryQuery);
-
-    // Rank database matches first
-    let rankedDbMatches = ImageRankingEngine.rank(dbMatches, queryEmbedding, primaryQuery);
-    
-    // Sort and filter high-quality matches
-    rankedDbMatches = rankedDbMatches
-      .filter((pose) => (pose.matchScore || 0) >= 60)
-      .sort((a, b) => b.matchScore - a.matchScore);
-
-    // If we have at least 20 matches, return immediately (No duplicate downloads/analysis)
-    if (rankedDbMatches.length >= 20) {
-      console.log(`[SearchService] Sufficient MongoDB matches found (${rankedDbMatches.length}). Skipping Pexels API fetch.`);
-      return rankedDbMatches.slice(0, 20).map((doc) => ({
+    // If local database has enough results, return them immediately (Step 14)
+    if (dbMatches.length >= 20) {
+      console.log(`[SearchService] Cache hit: Found ${dbMatches.length} matches. Skipping Pexels API.`);
+      
+      const normalizedResults = dbMatches.map((doc) => ({
         id: doc.id,
-        _id: doc._id,
         title: doc.name,
         image: doc.image,
+        thumbnail: doc.thumbnails?.[0] || doc.image,
         photographer: doc.photographer || "Pexels Creator",
-        category: doc.category,
-        categoryLabel: doc.categoryLabel,
+        photographerUrl: doc.photographerUrl || "",
         width: doc.width || 1920,
         height: doc.height || 1080,
+        category: doc.category,
         alt: doc.description,
-        source: "database",
-        matchScore: doc.matchScore,
-        processed: doc.processed || false
+        source: "database"
       }));
+
+      // Pagination slice
+      const startIdx = (page - 1) * 20;
+      return normalizedResults.slice(startIdx, startIdx + 20);
     }
 
-    console.log(`[SearchService] Insufficient cached matches. Fetching 200 images using 5 optimized queries...`);
-
-    // Step 2: Fetch 200 images (40 images per query)
+    // Step 5 & 6: Fetch 50 images per query and merge
+    console.log(`[SearchService] Cache miss. Fetching from Pexels API...`);
     let rawPhotos = [];
-    const seenIds = new Set();
-
-    for (const queryLine of optimizedQueries) {
+    for (const q of queries) {
       try {
-        const results = await PexelsService.searchPhotos(queryLine, 40, page);
-        for (const photo of results) {
-          if (!seenIds.has(photo.id)) {
-            rawPhotos.push(photo);
-            seenIds.add(photo.id);
-          }
-        }
+        const photos = await PexelsService.searchPhotos(q, 50, page);
+        rawPhotos = [...rawPhotos, ...photos];
       } catch (err) {
-        console.warn(`Pexels fetch failed for query "${queryLine}":`, err.message);
+        console.warn(`[SearchService] Pexels query failed: "${q}":`, err.message);
       }
     }
 
-    // Step 10: Reject blurred, low quality, watermarked, or tiny images
-    rawPhotos = rawPhotos.filter((photo) => {
-      const width = photo.width || 0;
-      const height = photo.height || 0;
-      return width >= 600 && height >= 600 && (photo.src?.large || photo.url);
-    });
+    const totalFetched = rawPhotos.length;
 
-    // Step 3: Remove duplicates
-    let uniquePhotos = DuplicateRemovalService.deduplicate(rawPhotos);
+    // Step 7: Remove duplicates
+    const uniquePhotos = DuplicateService.deduplicate(rawPhotos);
+    const duplicatesRemoved = totalFetched - uniquePhotos.length;
 
-    // Step 8: Store unique images in MongoDB cache first (processed: false)
-    const cachedDocs = await ImageCacheService.cachePhotos(uniquePhotos, category);
+    // Step 9 & 10: Store in MongoDB & log in ImageCache
+    const cachedDocs = await CacheService.cachePhotos(uniquePhotos, primaryQuery, cleanCategory);
 
-    // Step 4 & 5: Push unprocessed photos to background processor queue (BLIP-2 caption & landmarks)
-    for (const doc of cachedDocs) {
-      if (!doc.processed) {
-        imageProcessorQueue.enqueue(doc.id);
-      }
-    }
-
-    // Merge Pexels results with existing database matches
-    const combinedPool = [...cachedDocs];
-    const poolIds = new Set(combinedPool.map((p) => p.id));
-    for (const doc of dbMatches) {
-      if (!poolIds.has(doc.id)) {
-        combinedPool.push(doc);
-        poolIds.add(doc.id);
-      }
-    }
-
-    // Step 11: Rank combined pool based on Score = Similarity + Quality + Metadata + Popularity
-    const rankedDocs = ImageRankingEngine.rank(combinedPool, queryEmbedding, primaryQuery);
-
-    // Step 10: Reject wrong event/people count
-    const finalFilteredDocs = rankedDocs.filter((doc) => {
-      const docCategory = (doc.category || "").toLowerCase();
-      // Ensure category matches or has a soft match keyword
-      const categoryMatch = docCategory.includes(cleanCategory) || cleanCategory.includes(docCategory);
-      return categoryMatch;
-    });
-
-    // Step 7: Normalize response output format
-    const normalizedResults = finalFilteredDocs.map((doc) => ({
+    // Step 8: Normalize outputs
+    const normalizedResults = cachedDocs.map((doc) => ({
       id: doc.id,
-      _id: doc._id,
       title: doc.name,
       image: doc.image,
+      thumbnail: doc.thumbnails?.[0] || doc.image,
       photographer: doc.photographer || "Pexels Creator",
-      category: doc.category,
-      categoryLabel: doc.categoryLabel,
+      photographerUrl: doc.photographerUrl || "",
       width: doc.width || 1920,
       height: doc.height || 1080,
+      category: doc.category,
       alt: doc.description,
-      source: "pexels",
-      matchScore: doc.matchScore,
-      processed: doc.processed || false
+      source: "pexels"
     }));
 
-    // Step 12: Return Top 20 Images
-    const finalSorted = normalizedResults.sort((a, b) => b.matchScore - a.matchScore);
-    return finalSorted.slice(0, 20);
+    const apiTime = Date.now() - startTime;
+
+    // Step 16: Log Query, API Time, Images Returned, Duplicates Removed, Final Images
+    console.log(`\n=================== SEARCH LOGS ===================`);
+    console.log(`- Query: "${primaryQuery}"`);
+    console.log(`- API Execution Time: ${apiTime}ms`);
+    console.log(`- Raw Images Returned: ${totalFetched}`);
+    console.log(`- Duplicates Removed: ${duplicatesRemoved}`);
+    console.log(`- Final Unique Images: ${normalizedResults.length}`);
+    console.log(`====================================================\n`);
+
+    // Step 12: Return 20 images
+    const startIdx = (page - 1) * 20;
+    return normalizedResults.slice(startIdx, startIdx + 20);
   }
 }
 

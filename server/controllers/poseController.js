@@ -3,11 +3,10 @@ import Pose from "../models/Pose.js";
 
 export const getPoses = async (req, res) => {
   try {
-    const { category, style, lighting, search, page } = req.query;
+    const { category, search, page } = req.query;
 
     const pageNum = page ? parseInt(page) : 1;
 
-    // Use search string or the first category value, fallback to "wedding"
     let categoryTerm = "wedding";
     if (search) {
       categoryTerm = search;
@@ -15,16 +14,11 @@ export const getPoses = async (req, res) => {
       categoryTerm = Array.isArray(category) ? category[0] : category.split(",")[0];
     }
 
-    const filters = {
-      pose: style,
-      lighting,
-    };
-
-    // Execute real Pexels search & deduplication
+    // Call the clean Pexels Search Engine pipeline
     const results = await SearchService.executeSearch({
       category: categoryTerm,
-      filters,
       page: pageNum,
+      user: req.user?.username || "Anonymous"
     });
 
     return res.json({
@@ -60,18 +54,18 @@ export const getPoseById = async (req, res) => {
 
 export const getCategoriesList = async (req, res) => {
   try {
-    // Return standard categories
     const categories = [
       { id: "wedding", name: "Wedding", slug: "wedding" },
       { id: "birthday", name: "Birthday", slug: "birthday" },
-      { id: "pre-wedding", name: "Pre Wedding", slug: "pre-wedding" },
-      { id: "baby-shoot", name: "Baby Shoot", slug: "baby-shoot" },
+      { id: "solo-male", name: "Solo Male", slug: "solo-male" },
+      { id: "solo-female", name: "Solo Female", slug: "solo-female" },
       { id: "family", name: "Family", slug: "family" },
       { id: "travel", name: "Travel", slug: "travel" },
-      { id: "fashion", name: "Fashion", slug: "fashion" },
+      { id: "baby", name: "Baby", slug: "baby" },
       { id: "traditional", name: "Traditional", slug: "traditional" },
-      { id: "festival", name: "Festival", slug: "festival" },
       { id: "corporate", name: "Corporate", slug: "corporate" },
+      { id: "fashion", name: "Fashion", slug: "fashion" },
+      { id: "festival", name: "Festival", slug: "festival" },
     ];
     return res.json({ categories });
   } catch (error) {
@@ -88,42 +82,13 @@ export const getSimilarPoses = async (req, res) => {
       return res.status(404).json({ message: "Pose not found" });
     }
 
-    // Retrieve all other poses
-    const allPoses = await Pose.find({ id: { $ne: target.id } });
+    // Retrieve other poses of different categories
+    const allPoses = await Pose.find({
+      id: { $ne: target.id },
+      category: { $ne: target.category }
+    }).limit(20);
 
-    // Compare pose structures (calculate structural distance of landmark lists)
-    const scoredPoses = allPoses.map((pose) => {
-      let distance = 0;
-      const targetLms = target.poseEstimation?.landmarks || [];
-      const poseLms = pose.poseEstimation?.landmarks || [];
-
-      if (targetLms.length > 0 && poseLms.length > 0) {
-        // Compute Mean Absolute Error of coordinates
-        let sum = 0;
-        const len = Math.min(targetLms.length, poseLms.length);
-        for (let i = 0; i < len; i++) {
-          sum += Math.abs(targetLms[i].x - poseLms[i].x) + Math.abs(targetLms[i].y - poseLms[i].y);
-        }
-        distance = sum / len;
-      } else {
-        // Fallback distance based on style string match similarity
-        distance = target.style === pose.style ? 0.1 : 0.9;
-      }
-
-      // Add a penalty if category is identical (Step 15: Not same category)
-      const sameCategoryPenalty = (target.category === pose.category) ? 0.5 : 0;
-      const finalScore = 1 / (1 + distance + sameCategoryPenalty);
-
-      return {
-        ...pose.toObject ? pose.toObject() : pose,
-        matchScore: Math.round(finalScore * 100)
-      };
-    });
-
-    // Sort descending and return top 20
-    const sorted = scoredPoses.sort((a, b) => b.matchScore - a.matchScore).slice(0, 20);
-
-    return res.json({ poses: sorted });
+    return res.json({ poses: allPoses });
   } catch (error) {
     console.error("poseController getSimilarPoses error:", error.message);
     res.status(500).json({ message: "Error retrieving similar poses" });

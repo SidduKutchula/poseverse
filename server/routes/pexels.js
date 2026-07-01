@@ -1,5 +1,5 @@
 import express from "express";
-import * as pexelsService from "../services/pexelsService.js";
+import PexelsService from "../services/PexelsService.js";
 
 const router = express.Router();
 
@@ -11,7 +11,7 @@ router.get("/search", async (req, res) => {
     }
 
     const limit = count ? parseInt(count) : 12;
-    const results = await pexelsService.searchPexelsImages(query, limit);
+    const results = await PexelsService.searchPhotos(query, limit);
 
     return res.json({ query, results });
   } catch (error) {

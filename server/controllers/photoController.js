@@ -2,16 +2,15 @@ import SearchService from "../services/SearchService.js";
 
 export const getPhotos = async (req, res) => {
   try {
-    const { category, pose, lighting, background, page } = req.query;
+    const { category, page } = req.query;
 
     const pageNum = page ? parseInt(page) : 1;
-    const filters = { pose, lighting, background };
 
-    // Execute strict deduplicated pexels search caching pipeline
+    // Execute MERN Pexels Search Engine pipeline
     const results = await SearchService.executeSearch({
       category: category || "wedding",
-      filters,
-      page: pageNum
+      page: pageNum,
+      user: req.user?.username || "Anonymous"
     });
 
     return res.json(results);
