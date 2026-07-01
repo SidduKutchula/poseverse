@@ -13,11 +13,57 @@ export class SearchService {
       throw new Error("Category parameter is required");
     }
 
-    // Step 3 & 4: Build optimized query
     const optimizedQuery = QueryBuilderService.buildQuery(category, filters);
     const queryEmbedding = await getCLIPTextEmbedding(optimizedQuery);
 
-    // Step 5: Fetch 50 images per query
+    // ==========================================
+    // Database-First Caching Strategy (Phase 7)
+    // ==========================================
+    console.log(`[SearchService] Searching local database first for category: "${category}"...`);
+    const searchRegex = new RegExp(category.split(/\s+/).join("|"), "i");
+    
+    let dbMatches = await Pose.find({
+      $or: [
+        { category: { $regex: searchRegex } },
+        { name: { $regex: searchRegex } },
+        { description: { $regex: searchRegex } }
+      ]
+    });
+
+    // Score database matches using the CLIP Text vs Image Embeddings
+    let rankedDbMatches = ImageRankingEngine.rank(dbMatches, queryEmbedding, optimizedQuery);
+    
+    // Sort and filter high-quality matches
+    rankedDbMatches = rankedDbMatches
+      .filter((pose) => (pose.matchScore || 0) >= 60) // soft filter for cache
+      .sort((a, b) => b.matchScore - a.matchScore);
+
+    // If we have at least 20 local matching images, return them immediately
+    if (rankedDbMatches.length >= 20) {
+      console.log(`[SearchService] Found sufficient local cached database matches (${rankedDbMatches.length}). Returning cached set.`);
+      
+      const normalizedResults = rankedDbMatches.map((doc) => ({
+        id: doc.id,
+        _id: doc._id,
+        title: doc.name,
+        image: doc.image,
+        photographer: doc.photographer || "Pexels Creator",
+        category: doc.category,
+        categoryLabel: doc.categoryLabel,
+        width: doc.width || 1920,
+        height: doc.height || 1080,
+        alt: doc.description,
+        source: "database",
+        matchScore: doc.matchScore,
+        processed: doc.processed || false
+      }));
+
+      return normalizedResults.slice(0, 20);
+    }
+
+    console.log(`[SearchService] Insufficient cached matches (${rankedDbMatches.length}). Requesting real Pexels API fallback...`);
+
+    // Fetch 50 images per query
     let rawPhotos = [];
     try {
       rawPhotos = await PexelsService.searchPhotos(optimizedQuery, 50, page);
@@ -25,7 +71,7 @@ export class SearchService {
       console.error("Primary Pexels query failed:", error.message);
     }
 
-    // Step 10: Quality Filter (Reject Low Resolution, Broken, etc.)
+    // Quality Filter (Reject Low Resolution, Broken, etc.)
     rawPhotos = rawPhotos.filter((photo) => {
       const width = photo.width || 0;
       const height = photo.height || 0;
@@ -33,10 +79,10 @@ export class SearchService {
       return width >= 600 && height >= 600 && hasSrc;
     });
 
-    // Step 6: Remove duplicates
+    // Remove duplicates
     let uniquePhotos = DuplicateRemovalService.deduplicate(rawPhotos);
 
-    // Step 10: If less than 20 unique images are returned, automatically generate synonym queries
+    // Synonym query retry if unique results are under 20
     let retryIndex = 0;
     while (uniquePhotos.length < 20 && retryIndex < 2) {
       const synonymQuery = QueryBuilderService.getSynonyms(category, retryIndex);
@@ -51,20 +97,30 @@ export class SearchService {
       retryIndex++;
     }
 
-    // Step 8: Store unique images in MongoDB cache first (without waiting for background queue)
+    // Store unique images in MongoDB cache first (without blocking request thread)
     const cachedDocs = await ImageCacheService.cachePhotos(uniquePhotos, category);
 
-    // Step 1 & 2: Push new unprocessed photos to the background processor queue
+    // Push new unprocessed photos to the background processor queue
     for (const doc of cachedDocs) {
       if (!doc.processed) {
         imageProcessorQueue.enqueue(doc.id);
       }
     }
 
-    // Step 6: Run Ranking Engine on cached MongoDB documents
-    const rankedDocs = ImageRankingEngine.rank(cachedDocs, queryEmbedding, optimizedQuery);
+    // Merge Pexels results with existing database matches to build a complete pool
+    const combinedPool = [...cachedDocs];
+    const seenIds = new Set(combinedPool.map((p) => p.id));
+    for (const doc of dbMatches) {
+      if (!seenIds.has(doc.id)) {
+        combinedPool.push(doc);
+        seenIds.add(doc.id);
+      }
+    }
 
-    // Step 7: Normalize response output format
+    // Run Ranking Engine on combined pool
+    const rankedDocs = ImageRankingEngine.rank(combinedPool, queryEmbedding, optimizedQuery);
+
+    // Normalize response output format
     const normalizedResults = rankedDocs.map((doc) => ({
       id: doc.id,
       _id: doc._id,
@@ -81,7 +137,7 @@ export class SearchService {
       processed: doc.processed || false
     }));
 
-    // Step 9: Pagination - return a slice of 20 images sorted descending by matchScore
+    // Pagination - return top 20 images sorted descending by matchScore
     const finalSorted = normalizedResults.sort((a, b) => b.matchScore - a.matchScore);
     return finalSorted.slice(0, 20);
   }
