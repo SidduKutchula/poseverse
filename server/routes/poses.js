@@ -9,6 +9,9 @@ router.get("/", poseController.getPoses);
 // GET category definitions list
 router.get("/categories", poseController.getCategoriesList);
 
+// GET visually similar poses by structure
+router.get("/:id/similar", poseController.getSimilarPoses);
+
 // GET single pose by ID
 router.get("/:id", poseController.getPoseById);
 

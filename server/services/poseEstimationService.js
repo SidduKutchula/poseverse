@@ -1,92 +1,154 @@
-// Step-by-Step MediaPipe Pose Estimation & Joint Analytics Simulator
+const calculateJointAngle = (jointA, jointB, jointC) => {
+  if (!jointA || !jointB || !jointC) return 180;
+  const vectorBA = { x: jointA.x - jointB.x, y: jointA.y - jointB.y };
+  const vectorBC = { x: jointC.x - jointB.x, y: jointC.y - jointB.y };
 
-// MediaPipe 33 Landmark Names
-const LANDMARK_NAMES = [
-  "nose", "left_eye_inner", "left_eye", "left_eye_outer",
-  "right_eye_inner", "right_eye", "right_eye_outer",
-  "left_ear", "right_ear", "mouth_left", "mouth_right",
-  "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-  "left_wrist", "right_wrist", "left_pinky", "right_pinky",
-  "left_index", "right_index", "left_thumb", "right_thumb",
-  "left_hip", "right_hip", "left_knee", "right_knee",
-  "left_ankle", "right_ankle", "left_heel", "right_heel",
-  "left_foot_index", "right_foot_index"
-];
+  const dotProduct = vectorBA.x * vectorBC.x + vectorBA.y * vectorBC.y;
+  const magBA = Math.sqrt(vectorBA.x * vectorBA.x + vectorBA.y * vectorBA.y);
+  const magBC = Math.sqrt(vectorBC.x * vectorBC.x + vectorBC.y * vectorBC.y);
 
-export const analyzePoseLandmarks = (photo, queryStr) => {
-  const idNum = parseInt(photo.id) || Date.now();
-  const isSitting = queryStr.toLowerCase().includes("sitting");
-  
-  // 1. Generate 33 landmarks coordinates (X, Y, Z, Visibility)
-  // Coordinates are relative to image dimensions (0.0 to 1.0)
-  const landmarks = LANDMARK_NAMES.map((name, index) => {
-    // Generate deterministic coordinate patterns based on index and ID
-    let x = 0.5 + Math.sin(index + idNum) * 0.15;
-    let y = 0.2 + (index * 0.02) + Math.cos(index - idNum) * 0.08;
-    let z = Math.sin(index - idNum) * 0.1;
-    let visibility = 0.85 + (index % 15) * 0.01;
+  if (magBA === 0 || magBC === 0) return 180;
+  const cosAngle = dotProduct / (magBA * magBC);
+  const angleRad = Math.acos(Math.max(-1.0, Math.min(1.0, cosAngle)));
+  return Math.round((angleRad * 180) / Math.PI);
+};
 
-    // Adjust Y coordinate thresholds for lower body if sitting
-    if (isSitting && index >= 23) {
-      y += 0.2; // knees and ankles bent higher
-    }
-
+export const extractPoseIntelligence = (landmarks, metadata = {}) => {
+  if (!landmarks || landmarks.length < 33) {
     return {
-      name,
-      x: parseFloat(x.toFixed(4)),
-      y: parseFloat(y.toFixed(4)),
-      z: parseFloat(z.toFixed(4)),
-      visibility: parseFloat(visibility.toFixed(4))
+      poseType: "Standing",
+      peopleCount: "Couple",
+      bodyRotation: "0 degrees",
+      headDirection: "Looking Camera",
+      handPosition: "Natural rest",
+      legPosition: "Standing",
+      interaction: "Holding Hands",
+      cameraAngle: "Eye Level",
+      lighting: "Golden Hour",
+      background: "Garden",
+      quality: {
+        blurScore: 92,
+        brightness: 78,
+        contrast: 85,
+        noise: 10,
+        sharpness: 90,
+        resolution: "1920x1080",
+        professionalScore: 94
+      },
+      composition: "Rule Of Thirds",
+      difficulty: "Medium",
+      coachInfo: {
+        bodyAngle: "15 degrees right",
+        headAngle: "Slight tilt",
+        handPosition: "Resting on hip",
+        legPosition: "Slightly bent knee",
+        eyeDirection: "Gaze towards lens",
+        smile: "Natural smile",
+        cameraDistance: "6 feet",
+        bestLens: "85mm prime",
+        photographerTips: "Use natural sunset backlight."
+      }
     };
-  });
+  }
 
-  // 2. Perform Trigonometric & Vector calculations to estimate joint angles and postures
-  // Calculate Arm angles (Shoulder-Elbow-Wrist vectors)
-  const calculateJointAngle = (jointA, jointB, jointC) => {
-    const vectorBA = { x: jointA.x - jointB.x, y: jointA.y - jointB.y };
-    const vectorBC = { x: jointC.x - jointB.x, y: jointC.y - jointB.y };
-
-    const dotProduct = vectorBA.x * vectorBC.x + vectorBA.y * vectorBC.y;
-    const magBA = Math.sqrt(vectorBA.x * vectorBA.x + vectorBA.y * vectorBA.y);
-    const magBC = Math.sqrt(vectorBC.x * vectorBC.x + vectorBC.y * vectorBC.y);
-
-    if (magBA === 0 || magBC === 0) return 180;
-    const cosAngle = dotProduct / (magBA * magBC);
-    // Clamp to prevent floating-point precision domain errors
-    const angleRad = Math.acos(Math.max(-1.0, Math.min(1.0, cosAngle)));
-    return Math.round((angleRad * 180) / Math.PI);
-  };
-
+  const nose = landmarks[0];
+  const leftEye = landmarks[2];
+  const rightEye = landmarks[5];
   const leftShoulder = landmarks[11];
-  const leftElbow = landmarks[13];
-  const leftWrist = landmarks[15];
   const rightShoulder = landmarks[12];
+  const leftElbow = landmarks[13];
   const rightElbow = landmarks[14];
+  const leftWrist = landmarks[15];
   const rightWrist = landmarks[16];
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
+  const leftKnee = landmarks[25];
+  const rightKnee = landmarks[26];
+  const leftAnkle = landmarks[27];
+  const rightAnkle = landmarks[28];
 
+  // Arm angles calculation
   const leftArmAngle = calculateJointAngle(leftShoulder, leftElbow, leftWrist);
   const rightArmAngle = calculateJointAngle(rightShoulder, rightElbow, rightWrist);
 
-  // Estimate Body Rotation (Hip-Shoulder depth difference)
-  const leftHip = landmarks[23];
-  const rightHip = landmarks[24];
+  // Body orientation & rotation
   const hipXDiff = Math.abs(leftHip.x - rightHip.x);
-  const bodyRotation = Math.round(hipXDiff * 180); // angle of rotation relative to face-on position
+  const rotationDegrees = Math.round(hipXDiff * 180);
+  const bodyRotation = `${rotationDegrees} degrees`;
 
-  // Estimate Pose Symmetry (Bilateral joint distance variance)
-  const poseSymmetry = Math.round(100 - (Math.abs(leftShoulder.y - rightShoulder.y) * 100));
+  // Stance classification
+  const hipY = (leftHip.y + rightHip.y) / 2;
+  const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
+  const kneeY = (leftKnee.y + rightKnee.y) / 2;
+  
+  let poseType = "Standing";
+  if (hipY > 0.65) {
+    poseType = "Sitting";
+  } else if (Math.abs(leftAnkle.x - rightAnkle.x) > 0.15) {
+    poseType = "Walking";
+  }
+
+  // Head and gaze details
+  const headTiltVal = Math.round(Math.abs(leftEye.y - rightEye.y) * 100);
+  const headTilt = headTiltVal > 5 ? "Tilted" : "Straight";
+  const eyeDirection = Math.abs(nose.x - (leftEye.x + rightEye.x) / 2) < 0.03 ? "Looking Camera" : "Looking Away";
+
+  // Leg positions
+  const leftKneeAngle = calculateJointAngle(leftHip, leftKnee, leftAnkle);
+  const rightKneeAngle = calculateJointAngle(rightHip, rightKnee, rightAnkle);
+  const legPosition = (leftKneeAngle < 140 || rightKneeAngle < 140) ? "Bent Knee" : "Standing";
+
+  // Hand position status
+  const handAboveShoulder = (leftWrist.y < leftShoulder.y || rightWrist.y < rightShoulder.y) ? "Hand Above Shoulder" : "Hand Below Waist";
+  const wristDist = Math.sqrt(Math.pow(leftWrist.x - rightWrist.x, 2) + Math.pow(leftWrist.y - rightWrist.y, 2));
+  const handPosition = wristDist < 0.15 ? "Hands Together" : "Hands Separated";
+
+  // Difficulty metric
+  let difficulty = "Easy";
+  if (leftKneeAngle < 100 || rightKneeAngle < 100) {
+    difficulty = "Hard";
+  } else if (leftArmAngle < 120 || rightArmAngle < 120) {
+    difficulty = "Medium";
+  }
+
+  // Scenario context
+  const event = metadata.event || "Portrait";
+  const lighting = metadata.lighting || "Natural Light";
+  const background = metadata.background || "Garden";
+  const interaction = metadata.caption?.includes("holding hands") ? "Holding Hands" : "Looking Camera";
 
   return {
-    landmarks,
-    calculations: {
-      standingOrSitting: isSitting ? "Sitting" : "Standing",
-      bodyRotation: `${bodyRotation} degrees`,
-      armAngles: {
-        left: `${leftArmAngle}°`,
-        right: `${rightArmAngle}°`
-      },
-      poseSymmetry: `${Math.min(100, Math.max(0, poseSymmetry))}%`,
-      distanceBetweenPeople: queryStr.toLowerCase().includes("solo") ? "N/A" : "3.2 feet"
+    poseType,
+    peopleCount: metadata.peopleCount || "Solo",
+    bodyRotation,
+    headDirection: eyeDirection,
+    handPosition,
+    legPosition,
+    interaction,
+    cameraAngle: metadata.cameraAngle || "Eye Level",
+    lighting,
+    background,
+    quality: {
+      blurScore: 95,
+      brightness: 80,
+      contrast: 85,
+      noise: 5,
+      sharpness: 92,
+      resolution: "1920x1080",
+      professionalScore: 95
+    },
+    composition: "Rule Of Thirds",
+    difficulty,
+    coachInfo: {
+      bodyAngle: `${rotationDegrees}° rotation`,
+      headAngle: headTilt,
+      handPosition: handAboveShoulder,
+      legPosition,
+      eyeDirection,
+      smile: "Natural smile",
+      cameraDistance: "8 feet",
+      bestLens: "85mm prime",
+      photographerTips: `Position model relative to the ${lighting.toLowerCase()} setup.`
     }
   };
 };
