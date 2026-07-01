@@ -264,3 +264,19 @@
     overflow: hidden;
   }
 }
+
+.shimmer, .shimmer-bg {
+  background: linear-gradient(
+    90deg,
+    #F3F0EB 25%,
+    #E8E4DE 50%,
+    #F3F0EB 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

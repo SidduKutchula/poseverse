@@ -13,7 +13,7 @@
 - [x] ImageShimmer/Skeleton loader component (built into PoseCard)
 - [x] CategoryCard component (image with gradient overlay, category name)
 - [x] FilterSidebar component (accordion filters, apply/clear buttons)
-- [ ] Toast notification system (success, error, info states)
+- [x] Toast notification system (success, error, info states)
 - [x] Navigation/Navbar component (sticky, responsive mobile menu)
 - [x] Footer component (links, social icons, tagline)
 
@@ -26,40 +26,40 @@
 
 ## Pages - Authentication
 - [x] Login page (Google OAuth, email/password form)
-- [ ] Signup page (Google OAuth, email/password form)
+- [x] Signup page (Google OAuth, email/password form)
 - [x] Auth flow integration (OAuth callback, session management via template)
 
 ## Pages - User Features
 - [x] Mood Board page (protected route, grid with save/share buttons)
-- [ ] Public Mood Board share view (read-only, no auth required)
-- [ ] User Profile page (basic profile info, logout)
+- [x] Public Mood Board share view (read-only, no auth required)
+- [x] User Profile page (basic profile info, logout)
 
-## Database Schema & Backend
-- [ ] Define Pose schema (name, description, category, difficulty, metadata, etc.)
-- [ ] Define Category schema (name, slug, unsplashKeyword, poseCount, icon)
-- [ ] Define MoodBoard schema (userId, poses array, shareToken, isPublic)
-- [ ] Extend User schema (add savedPoses, moodBoards relations)
-- [ ] Create database migrations via Drizzle
-- [ ] Create seed data (30+ poses across 12 categories)
-- [ ] Create database query helpers in server/db.ts
+## Database Schema & Backend (via Mongoose & MongoDB)
+- [x] Define Pose schema (name, description, category, difficulty, metadata, etc.)
+- [x] Define Category schema (name, slug, unsplashKeyword, poseCount, icon)
+- [x] Define MoodBoard schema (userId, poses array, shareToken, isPublic)
+- [x] Extend User schema (add savedPoses, moodBoards relations)
+- [x] Create seed data (36 poses across 12 categories)
+- [x] Implement robust in-memory offline fallback datasets for all data features
 
-## Backend API Endpoints (via tRPC)
-- [ ] poses.list (with filtering: category, difficulty, style, location, people, search, sort, page, limit)
-- [ ] poses.getById (single pose detail)
-- [ ] categories.list (list all categories)
-- [ ] ai.recommend (OpenAI integration for pose suggestions)
-- [ ] moodboard.get (protected - get user's mood board)
-- [ ] moodboard.add (protected - add pose to mood board)
-- [ ] moodboard.remove (protected - remove pose from mood board)
-- [ ] moodboard.getShared (public - get shared mood board by token)
+## Backend API Endpoints (via REST / Express)
+- [x] GET /api/poses (with filtering: category, difficulty, style, location, people, search, sort, page, limit)
+- [x] GET /api/poses/:id (single pose detail)
+- [x] GET /api/categories (list all categories)
+- [x] POST /api/ai/recommend (OpenAI integration with local offline matching fallback)
+- [x] GET /api/moodboard (protected - get user's mood board)
+- [x] POST /api/moodboard/add (protected - add pose to mood board)
+- [x] POST /api/moodboard/reorder (protected - reorder poses in mood board)
+- [x] DELETE /api/moodboard/:poseId (protected - remove pose from mood board)
+- [x] GET /api/moodboard/share/:token (public - get shared mood board by token)
 
 ## Frontend-Backend Integration
-- [ ] Wire Explore page to backend poses API
-- [ ] Wire Pose Detail page to backend pose/:id API
-- [ ] Wire AI Recommend page to OpenAI integration
-- [ ] Wire Mood Board to backend moodboard API
-- [ ] Implement auth flow (login, signup, logout)
-- [ ] Add protected route guards for authenticated pages
+- [x] Wire Explore page to backend poses API
+- [x] Wire Pose Detail page to backend pose/:id API
+- [x] Wire AI Recommend page to OpenAI integration
+- [x] Wire Mood Board to backend moodboard API
+- [x] Implement auth flow (login, signup, logout)
+- [x] Add protected route guards for authenticated pages
 
 ## Image & Media
 - [x] Set up Unsplash Source API integration for pose reference images (via URLs)
@@ -91,12 +91,12 @@
 - [ ] Write vitest tests for PoseCard component
 - [ ] Write vitest tests for CategoryCard component
 - [ ] Write vitest tests for FilterSidebar component
-- [ ] Write vitest tests for tRPC procedures
-- [ ] Write vitest tests for mood board operations
-- [ ] Write vitest tests for AI recommendation flow
+- [x] Write vitest tests for authentication controllers
+- [x] Write vitest tests for service layers (Pose, User, MoodBoard)
+- [x] Write vitest tests for Mongoose plugins (soft delete)
 
 ## Deployment & Polish
-- [ ] Add toast notification system for user feedback
+- [x] Add toast notification system for user feedback
 - [ ] Performance optimization (code splitting, lazy loading)
 - [ ] SEO optimization (meta tags, structured data)
 - [ ] Accessibility audit (WCAG compliance, keyboard navigation)
@@ -104,8 +104,8 @@
 - [ ] Final checkpoint and deployment
 
 ## Current Status
-**Phase 2 Complete**: Design system, core components, and all main pages built with mock data
-**Next**: Database schema, backend API, and frontend-backend integration
+**Phase 3 Complete**: Database schemas, backend REST APIs (with local fallbacks), and frontend-backend integration fully implemented and tested.
+**Next**: Additional interactive animations, mobile filters bottom drawer, and automated visual testing.
 
 ## Future Enhancements (Out of Scope)
 - [ ] On-demand AI image generation for custom pose references
