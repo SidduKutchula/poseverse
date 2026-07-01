@@ -19,53 +19,33 @@ const CATEGORY_MAP = {
   group: "happy group portrait photography outdoor friendly"
 };
 
-const SYNONYMS = {
-  wedding: ["indian wedding portrait", "wedding couple", "bride groom", "traditional marriage"],
-  birthday: ["birthday celebration", "party portrait", "cutting cake"],
-  "pre wedding": ["prewedding shoot", "outdoor romance", "couple lifestyle"],
-  "baby shoot": ["baby portrait", "newborn photography", "infant shoot"],
-  family: ["family picnic", "parenting portrait", "family generation"],
-  travel: ["vacation pose", "adventurer lifestyle", "travel blogger"],
-  fashion: ["model portfolio", "street style fashion", "studio model"],
-  corporate: ["executive headshot", "office portrait", "professional business"],
-  traditional: ["ethnic wear", "indian cultural costume", "traditional portrait"],
-  festival: ["cultural festival celebrate", "festive clothing portrait"],
-  graduation: ["graduated caps cap cap cap cap cap caps caps caps cap", "university graduation ceremony"],
-  sports: ["athletic workout", "fitness model portrait"],
-  friends: ["friends laughing outdoor", "lifestyle group portrait"],
-  instagram: ["influencer street style", "modern aesthetic pose"],
-  "solo male": ["men style portrait", "gentleman outdoor pose"],
-  "solo female": ["women outdoor portrait", "elegant lady pose"],
-  couple: ["lovers outdoor", "holding hands walk"],
-  group: ["group gathering", "happy colleagues portrait"]
-};
-
 export class QueryBuilderService {
-  static buildQuery(category, filters = {}) {
+  // Generate exactly 5 distinct optimized search queries (Step 1)
+  static generateFiveQueries(category, filters = {}) {
     const cleanCategory = (category || "").toLowerCase().trim();
-    
-    // Map base keywords
-    let queryBase = CATEGORY_MAP[cleanCategory] || CATEGORY_MAP[cleanCategory.replace(/-/g, " ")] || `${cleanCategory} photography portrait`;
+    const baseQuery = CATEGORY_MAP[cleanCategory] || `${cleanCategory} photography portrait`;
 
-    // Append filter details if applicable
-    const parts = [queryBase];
-    if (filters.pose && !queryBase.includes(filters.pose.toLowerCase())) {
-      parts.push(filters.pose);
-    }
-    if (filters.lighting && !queryBase.includes(filters.lighting.toLowerCase())) {
-      parts.push(filters.lighting);
-    }
-    if (filters.background && !queryBase.includes(filters.background.toLowerCase())) {
-      parts.push(filters.background);
-    }
+    const pose = filters.pose || "standing";
+    const lighting = filters.lighting || "golden hour";
+    const background = filters.background || "outdoor";
+    const mood = filters.mood || "romantic";
 
-    return parts.join(" ").trim();
+    return [
+      `${baseQuery} ${pose} ${lighting} ${background} ${mood}`, // Query 1: Detailed prompt
+      `cinematic ${cleanCategory} photography ${pose} ${lighting}`, // Query 2: Aesthetic lighting variation
+      `artistic ${cleanCategory} portrait pose ${background}`, // Query 3: Composition variation
+      `professional portrait photography ${cleanCategory} ${mood}`, // Query 4: Mood variation
+      `candid ${cleanCategory} style photography ${pose}` // Query 5: Natural lifestyle variation
+    ];
   }
 
   static getSynonyms(category, retryIndex = 0) {
-    const cleanCategory = (category || "").toLowerCase().trim();
-    const list = SYNONYMS[cleanCategory] || SYNONYMS[cleanCategory.replace(/-/g, " ")] || [`${cleanCategory} photography`];
-    return list[retryIndex % list.length] || list[0];
+    const list = [
+      `${category} portrait`,
+      `${category} photoshoot`,
+      `${category} ceremony`
+    ];
+    return list[retryIndex % list.length];
   }
 }
 

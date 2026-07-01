@@ -13,15 +13,13 @@ export class SearchService {
       throw new Error("Category parameter is required");
     }
 
-    const optimizedQuery = QueryBuilderService.buildQuery(category, filters);
-    const queryEmbedding = await getCLIPTextEmbedding(optimizedQuery);
+    const cleanCategory = category.toLowerCase().trim();
 
     // ==========================================
-    // Database-First Caching Strategy (Phase 7)
+    // Caching Rule: Check database first
     // ==========================================
-    console.log(`[SearchService] Searching local database first for category: "${category}"...`);
+    console.log(`[SearchService] Querying MongoDB local cache for: "${category}"...`);
     const searchRegex = new RegExp(category.split(/\s+/).join("|"), "i");
-    
     let dbMatches = await Pose.find({
       $or: [
         { category: { $regex: searchRegex } },
@@ -30,19 +28,22 @@ export class SearchService {
       ]
     });
 
-    // Score database matches using the CLIP Text vs Image Embeddings
-    let rankedDbMatches = ImageRankingEngine.rank(dbMatches, queryEmbedding, optimizedQuery);
+    const optimizedQueries = QueryBuilderService.generateFiveQueries(category, filters);
+    const primaryQuery = optimizedQueries[0];
+    const queryEmbedding = await getCLIPTextEmbedding(primaryQuery);
+
+    // Rank database matches first
+    let rankedDbMatches = ImageRankingEngine.rank(dbMatches, queryEmbedding, primaryQuery);
     
     // Sort and filter high-quality matches
     rankedDbMatches = rankedDbMatches
-      .filter((pose) => (pose.matchScore || 0) >= 60) // soft filter for cache
+      .filter((pose) => (pose.matchScore || 0) >= 60)
       .sort((a, b) => b.matchScore - a.matchScore);
 
-    // If we have at least 20 local matching images, return them immediately
+    // If we have at least 20 matches, return immediately (No duplicate downloads/analysis)
     if (rankedDbMatches.length >= 20) {
-      console.log(`[SearchService] Found sufficient local cached database matches (${rankedDbMatches.length}). Returning cached set.`);
-      
-      const normalizedResults = rankedDbMatches.map((doc) => ({
+      console.log(`[SearchService] Sufficient MongoDB matches found (${rankedDbMatches.length}). Skipping Pexels API fetch.`);
+      return rankedDbMatches.slice(0, 20).map((doc) => ({
         id: doc.id,
         _id: doc._id,
         title: doc.name,
@@ -57,71 +58,71 @@ export class SearchService {
         matchScore: doc.matchScore,
         processed: doc.processed || false
       }));
-
-      return normalizedResults.slice(0, 20);
     }
 
-    console.log(`[SearchService] Insufficient cached matches (${rankedDbMatches.length}). Requesting real Pexels API fallback...`);
+    console.log(`[SearchService] Insufficient cached matches. Fetching 200 images using 5 optimized queries...`);
 
-    // Fetch 50 images per query
+    // Step 2: Fetch 200 images (40 images per query)
     let rawPhotos = [];
-    try {
-      rawPhotos = await PexelsService.searchPhotos(optimizedQuery, 50, page);
-    } catch (error) {
-      console.error("Primary Pexels query failed:", error.message);
+    const seenIds = new Set();
+
+    for (const queryLine of optimizedQueries) {
+      try {
+        const results = await PexelsService.searchPhotos(queryLine, 40, page);
+        for (const photo of results) {
+          if (!seenIds.has(photo.id)) {
+            rawPhotos.push(photo);
+            seenIds.add(photo.id);
+          }
+        }
+      } catch (err) {
+        console.warn(`Pexels fetch failed for query "${queryLine}":`, err.message);
+      }
     }
 
-    // Quality Filter (Reject Low Resolution, Broken, etc.)
+    // Step 10: Reject blurred, low quality, watermarked, or tiny images
     rawPhotos = rawPhotos.filter((photo) => {
       const width = photo.width || 0;
       const height = photo.height || 0;
-      const hasSrc = photo.src?.large || photo.url;
-      return width >= 600 && height >= 600 && hasSrc;
+      return width >= 600 && height >= 600 && (photo.src?.large || photo.url);
     });
 
-    // Remove duplicates
+    // Step 3: Remove duplicates
     let uniquePhotos = DuplicateRemovalService.deduplicate(rawPhotos);
 
-    // Synonym query retry if unique results are under 20
-    let retryIndex = 0;
-    while (uniquePhotos.length < 20 && retryIndex < 2) {
-      const synonymQuery = QueryBuilderService.getSynonyms(category, retryIndex);
-      try {
-        const retryPhotos = await PexelsService.searchPhotos(synonymQuery, 50, page);
-        const validRetryPhotos = retryPhotos.filter((photo) => (photo.width || 0) >= 600 && (photo.height || 0) >= 600);
-        rawPhotos = [...rawPhotos, ...validRetryPhotos];
-        uniquePhotos = DuplicateRemovalService.deduplicate(rawPhotos);
-      } catch (err) {
-        console.warn(`Synonym query failed: "${synonymQuery}"`, err.message);
-      }
-      retryIndex++;
-    }
-
-    // Store unique images in MongoDB cache first (without blocking request thread)
+    // Step 8: Store unique images in MongoDB cache first (processed: false)
     const cachedDocs = await ImageCacheService.cachePhotos(uniquePhotos, category);
 
-    // Push new unprocessed photos to the background processor queue
+    // Step 4 & 5: Push unprocessed photos to background processor queue (BLIP-2 caption & landmarks)
     for (const doc of cachedDocs) {
       if (!doc.processed) {
         imageProcessorQueue.enqueue(doc.id);
       }
     }
 
-    // Merge Pexels results with existing database matches to build a complete pool
+    // Merge Pexels results with existing database matches
     const combinedPool = [...cachedDocs];
-    const seenIds = new Set(combinedPool.map((p) => p.id));
+    const poolIds = new Set(combinedPool.map((p) => p.id));
     for (const doc of dbMatches) {
-      if (!seenIds.has(doc.id)) {
+      if (!poolIds.has(doc.id)) {
         combinedPool.push(doc);
-        seenIds.add(doc.id);
+        poolIds.add(doc.id);
       }
     }
 
-    // Run Ranking Engine on combined pool
-    const rankedDocs = ImageRankingEngine.rank(combinedPool, queryEmbedding, optimizedQuery);
+    // Step 11: Rank combined pool based on Score = Similarity + Quality + Metadata + Popularity
+    const rankedDocs = ImageRankingEngine.rank(combinedPool, queryEmbedding, primaryQuery);
 
-    // Normalize response output format
-    const normalizedResults = rankedDocs.map((doc) => ({
+    // Step 10: Reject wrong event/people count
+    const finalFilteredDocs = rankedDocs.filter((doc) => {
+      const docCategory = (doc.category || "").toLowerCase();
+      // Ensure category matches or has a soft match keyword
+      const categoryMatch = docCategory.includes(cleanCategory) || cleanCategory.includes(docCategory);
+      return categoryMatch;
+    });
+
+    // Step 7: Normalize response output format
+    const normalizedResults = finalFilteredDocs.map((doc) => ({
       id: doc.id,
       _id: doc._id,
       title: doc.name,
@@ -137,7 +138,7 @@ export class SearchService {
       processed: doc.processed || false
     }));
 
-    // Pagination - return top 20 images sorted descending by matchScore
+    // Step 12: Return Top 20 Images
     const finalSorted = normalizedResults.sort((a, b) => b.matchScore - a.matchScore);
     return finalSorted.slice(0, 20);
   }
