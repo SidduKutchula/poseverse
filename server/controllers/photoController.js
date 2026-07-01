@@ -14,7 +14,7 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct;
 };
 
-// Level 4: Perceptual Hash (pHash) calculator based on visual details (simulated since full canvas is missing)
+// Perceptual Hash (pHash) calculator based on visual details
 const calculatePHash = (photo) => {
   const text = (photo.alt || "") + (photo.photographer || "");
   let hashVal = 0n;
@@ -146,7 +146,38 @@ export const getPhotos = async (req, res) => {
     // Generate real CLIP text embedding for query
     const queryEmbedding = await getCLIPTextEmbedding(query);
 
-    // Rule 2 & 3: Fetch 50 images per query and merge
+    // ==========================================
+    // Phase 7: Search Local Database First
+    // ==========================================
+    console.log("Searching local database cache first...");
+    let dbMatches = await Pose.find({
+      $or: [
+        { name: { $regex: query, $options: "i" } },
+        { description: { $regex: query, $options: "i" } },
+        { category: { $regex: query, $options: "i" } }
+      ]
+    });
+
+    // Run semantic similarity checks on the retrieved local DB items
+    for (let doc of dbMatches) {
+      const docEmbedding = doc.poseEstimation?.landmarks?.map((lm) => lm.x) || [];
+      const similarity = cosineSimilarity(queryEmbedding, docEmbedding);
+      doc.matchScore = Math.round(similarity * 100) || doc.matchScore;
+    }
+
+    // Filter by relevance score >= 80
+    dbMatches = dbMatches.filter((doc) => doc.matchScore >= 80);
+
+    // If we have at least 20 high-quality unique local results, return them immediately!
+    if (dbMatches.length >= 20) {
+      console.log(`Found sufficient local database matches (${dbMatches.length}). Skipping Pexels fetch.`);
+      const sortedDb = dbMatches.sort((a, b) => b.matchScore - a.matchScore);
+      return res.json(sortedDb.slice(0, 20));
+    }
+
+    console.log(`Insufficient database matches (${dbMatches.length}). Querying Pexels API fallback...`);
+
+    // Fetch 50 images per query and merge
     const executeSearch = async (searchQueries) => {
       const allPhotos = [];
       const seenUrls = new Set();
@@ -194,11 +225,10 @@ export const getPhotos = async (req, res) => {
           landmarks = await runPoseEstimation(imageUrl);
         } else {
           blipCaption = poseRecord.description || "Inspiration pose";
-          imageEmbedding = poseRecord.poseEstimation?.landmarks?.map((lm) => lm.x) || []; // retrieve vector
+          imageEmbedding = poseRecord.poseEstimation?.landmarks?.map((lm) => lm.x) || [];
           landmarks = poseRecord.poseEstimation?.landmarks || [];
         }
 
-        // Map metadata values based on real BLIP-2 caption details
         const isSitting = blipCaption.includes("sitting") || blipCaption.includes("sit") || query.includes("sitting");
         const calculations = processJointCalculations(landmarks, isSitting);
 
@@ -296,7 +326,7 @@ export const getPhotos = async (req, res) => {
       return poses;
     };
 
-    // Stage 4 & 5: Visual and perceptual Deduplication Engine
+    // Stage 4 & 5: Deduplication Engine
     const filterDuplicates = (poses) => {
       const uniques = [];
 
@@ -324,7 +354,6 @@ export const getPhotos = async (req, res) => {
             break;
           }
 
-          // pHash similarity > 95% check
           const hashSimilarity = comparePHashes(current.pHash, target.pHash);
           if (hashSimilarity > 95) {
             isDuplicate = true;
@@ -332,7 +361,6 @@ export const getPhotos = async (req, res) => {
             break;
           }
 
-          // Visual Embedding similarity > 98% check
           const embeddingSimilarity = cosineSimilarity(current.imageEmbedding, target.imageEmbedding);
           if (embeddingSimilarity > 0.98) {
             isDuplicate = true;
@@ -367,6 +395,15 @@ export const getPhotos = async (req, res) => {
       const retryRaw = await executeSearch(retryQueries);
       const retryProcessed = await processAndRank(retryRaw);
       finalUniques = filterDuplicates([...finalUniques, ...retryProcessed]);
+    }
+
+    // Merge with any database matches
+    const seenIds = new Set(finalUniques.map((r) => r.id));
+    for (const doc of dbMatches) {
+      if (!seenIds.has(doc.id)) {
+        finalUniques.push(doc);
+        seenIds.add(doc.id);
+      }
     }
 
     // Sort by relevance score
