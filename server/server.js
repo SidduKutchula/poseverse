@@ -19,6 +19,7 @@ import studentRouter from "./routes/student.js";
 import adminRouter from "./routes/admin.js";
 import pexelsRouter from "./routes/pexels.js";
 import searchRouter from "./routes/search.js";
+import { initQdrant } from "./services/qdrantService.js";
 
 // Import Vite Helper
 import { setupVite, serveStatic } from "./vite.js";
@@ -102,9 +103,13 @@ async function startServer() {
     console.log("Attempting to connect to MongoDB...");
     await mongoose.connect(mongoUri);
     console.log("Successfully connected to MongoDB!");
+    // Initialize Qdrant Collection
+    await initQdrant();
   } catch (error) {
     console.warn("\n[Warning] Failed to connect to MongoDB:", error.message);
     console.warn("The server will run in OFFLINE/DEMO mode using local in-memory fallback datasets.\n");
+    // Fallback initialize Qdrant
+    await initQdrant();
   }
 
   // Centralized Error-Handling Middleware
