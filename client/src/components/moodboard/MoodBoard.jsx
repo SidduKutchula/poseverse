@@ -1,8 +1,49 @@
-import React from "react";
+import React, { useState } from "react";
 import { X, Heart, Link as LinkIcon, Download, Sparkles } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import PoseCard from "../pose/PoseCard";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+
+const MoodBoardItem = ({ pose, index, id, onRemove, provided, snapshot }) => {
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  const handleRemoveClick = (e) => {
+    e.stopPropagation();
+    setIsRemoving(true);
+  };
+
+  return (
+    <motion.div
+      ref={provided.innerRef}
+      {...provided.draggableProps}
+      {...provided.dragHandleProps}
+      animate={isRemoving ? { opacity: 0, scale: 0.9, y: 15 } : { opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      onAnimationComplete={() => {
+        if (isRemoving) {
+          onRemove(id);
+        }
+      }}
+      className={`relative group/card transition-transform duration-100 ${
+        snapshot.isDragging ? "scale-105 z-30 ring-2 ring-primary/45" : ""
+      }`}
+    >
+      {/* The PoseCard itself */}
+      <PoseCard pose={pose} index={index} />
+
+      {/* Hover Remove Cross Button */}
+      <button
+        type="button"
+        onClick={handleRemoveClick}
+        className="absolute top-3 right-14 w-8 h-8 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover/card:opacity-100 transition-opacity duration-150 z-20"
+        title="Remove from Mood Board"
+      >
+        <X size={16} strokeWidth={3} />
+      </button>
+    </motion.div>
+  );
+};
 
 const MoodBoard = ({ poses, isReadOnly = false, onRemove, onShare, onReorder, onDownloadPDF }) => {
   const handleDragEnd = (result) => {
@@ -105,30 +146,14 @@ const MoodBoard = ({ poses, isReadOnly = false, onRemove, onShare, onReorder, on
                 return (
                   <Draggable key={id} draggableId={id} index={index}>
                     {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className={`relative group/card transition-transform duration-100 ${
-                          snapshot.isDragging ? "scale-105 z-30 ring-2 ring-primary/45" : ""
-                        }`}
-                      >
-                        {/* The PoseCard itself */}
-                        <PoseCard pose={pose} index={index} />
-
-                        {/* Hover Remove Cross Button */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemove(id);
-                          }}
-                          className="absolute top-3 right-14 w-8 h-8 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover/card:opacity-100 transition-opacity duration-150 z-20"
-                          title="Remove from Mood Board"
-                        >
-                          <X size={16} strokeWidth={3} />
-                        </button>
-                      </div>
+                      <MoodBoardItem
+                        pose={pose}
+                        index={index}
+                        id={id}
+                        onRemove={onRemove}
+                        provided={provided}
+                        snapshot={snapshot}
+                      />
                     )}
                   </Draggable>
                 );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, SlidersHorizontal, Grid, List, Check, X } from "lucide-react";
+import { Search, SlidersHorizontal, Grid, List, Check, X, Sparkles } from "lucide-react";
 import PoseCard from "../components/pose/PoseCard";
 import FilterSidebar from "../components/pose/FilterSidebar";
 import Shimmer from "../components/ui/Shimmer";
@@ -9,6 +9,7 @@ import SEO from "../components/layout/SEO";
 import api from "../utils/api";
 import { useToast } from "../context/ToastContext";
 import PoseImage from "../components/ui/PoseImage";
+import QueryBuilder from "../components/pose/QueryBuilder";
 
 const Explore = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,6 +38,14 @@ const Explore = () => {
   const [viewMode, setViewMode] = useState("grid"); // grid / list
 
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isQueryBuilderOpen, setIsQueryBuilderOpen] = useState(false);
+
+  const handleQueryBuilderResults = (pexelsPoses, compiledQuery) => {
+    setPoses(pexelsPoses);
+    setTotalCount(pexelsPoses.length);
+    setHasMore(false);
+    showToast(`Fetched ${pexelsPoses.length} Pexels poses for "${compiledQuery}"`, "success");
+  };
 
   // Sync category parameter from URL on mount or URL change
   useEffect(() => {
@@ -242,6 +251,14 @@ const Explore = () => {
               </div>
 
               <button
+                onClick={() => setIsQueryBuilderOpen(true)}
+                className="flex items-center gap-1.5 bg-[#FAECE7] hover:bg-[#FAECE7]/80 text-[#D85A30] border border-primary/20 rounded-sm py-2 px-3.5 text-sm font-semibold transition-colors shrink-0 shadow-sm"
+              >
+                <Sparkles size={14} />
+                AI Query Builder
+              </button>
+
+              <button
                 onClick={() => setIsMobileFilterOpen(true)}
                 className="md:hidden flex items-center gap-1 bg-white border border-border rounded-sm py-2 px-3 text-sm text-textSecondary hover:text-primary transition-colors shrink-0"
               >
@@ -304,7 +321,13 @@ const Explore = () => {
                 </div>
               ) : (
                 /* Masonry or List Grid of Poses */
-                <div className="space-y-6">
+                <motion.div
+                  key={`${viewMode}-${JSON.stringify(filters)}-${poses.length}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
                   {viewMode === "grid" ? (
                     <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 w-full">
                       {poses.map((pose, index) => (
@@ -370,7 +393,7 @@ const Explore = () => {
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                     </div>
                   )}
-                </div>
+                </motion.div>
               )}
             </div>
           </div>
@@ -412,6 +435,17 @@ const Explore = () => {
                 </div>
               </motion.div>
             </div>
+          )}
+        </AnimatePresence>
+
+        {/* AI Query Builder Modal */}
+        <AnimatePresence>
+          {isQueryBuilderOpen && (
+            <QueryBuilder
+              isOpen={isQueryBuilderOpen}
+              onClose={() => setIsQueryBuilderOpen(false)}
+              onResultsFetched={handleQueryBuilderResults}
+            />
           )}
         </AnimatePresence>
       </motion.div>

@@ -17,6 +17,8 @@ import aiRouter from "./routes/ai.js";
 import moodboardRouter from "./routes/moodboard.js";
 import studentRouter from "./routes/student.js";
 import adminRouter from "./routes/admin.js";
+import pexelsRouter from "./routes/pexels.js";
+import searchRouter from "./routes/search.js";
 
 // Import Vite Helper
 import { setupVite, serveStatic } from "./vite.js";
@@ -91,6 +93,8 @@ async function startServer() {
   app.use("/api/moodboard", moodboardRouter);
   app.use("/api/student", studentRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/pexels", pexelsRouter);
+  app.use("/api/search", searchRouter);
 
   // Connect to MongoDB
   const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/poseverse";

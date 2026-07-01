@@ -95,6 +95,27 @@ const poseSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    poseEstimation: {
+      landmarks: [
+        {
+          name: { type: String },
+          x: { type: Number },
+          y: { type: Number },
+          z: { type: Number },
+          visibility: { type: Number }
+        }
+      ],
+      calculations: {
+        standingOrSitting: { type: String },
+        bodyRotation: { type: String },
+        armAngles: {
+          left: { type: String },
+          right: { type: String }
+        },
+        poseSymmetry: { type: String },
+        distanceBetweenPeople: { type: String }
+      }
+    }
   },
   {
     timestamps: true,

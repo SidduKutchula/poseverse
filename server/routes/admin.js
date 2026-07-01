@@ -5,6 +5,7 @@ import Pose from "../models/Pose.js";
 import User from "../models/User.js";
 import MoodBoard from "../models/MoodBoard.js";
 import { POSES } from "../../client/src/data/poses.js";
+import { uploadToCloudinary } from "../services/cloudinary.js";
 
 const router = express.Router();
 
@@ -165,6 +166,29 @@ router.delete("/poses/:id", protect, adminOnly, async (req, res) => {
   } catch (error) {
     console.error("Admin delete pose error:", error);
     res.status(500).json({ message: "Error deleting pose" });
+  }
+});
+
+// POST upload image (Base64)
+router.post("/upload", protect, adminOnly, async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) {
+      return res.status(400).json({ message: "Image base64 data is required" });
+    }
+
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uploadResult = await uploadToCloudinary(buffer);
+
+    return res.json({
+      url: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+    });
+  } catch (error) {
+    console.error("Admin upload image error:", error.message);
+    res.status(500).json({ message: "Failed to upload image" });
   }
 });
 

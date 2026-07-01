@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import { setUser, setLoading, logoutUser } from "../store/slices/authSlice";
 import api from "../utils/api";
 
 const AuthContext = createContext(null);
 
-// Pure JS JWT decoder to avoid adding dependencies
 const decodeToken = (token) => {
   try {
     const base64Url = token.split(".")[1];
@@ -21,47 +22,46 @@ const decodeToken = (token) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { user, loading, isAuthenticated } = useSelector((state) => state.auth);
 
   useEffect(() => {
     const verifySession = async () => {
       const token = localStorage.getItem("token");
       if (token) {
         const decoded = decodeToken(token);
-        // Check if token expired (decoded.exp in seconds)
         if (decoded && decoded.exp * 1000 > Date.now()) {
-          setUser({
-            id: decoded.id,
-            name: decoded.name,
-            email: decoded.email,
-            role: decoded.role,
-          });
+          dispatch(
+            setUser({
+              id: decoded.id,
+              name: decoded.name,
+              email: decoded.email,
+              role: decoded.role,
+            })
+          );
         } else {
-          // Token is expired. Let Axios response interceptor try to refresh it
           try {
             const refreshResponse = await api.post("/auth/refresh");
             const { token: newAccessToken, user: userData } = refreshResponse.data;
             localStorage.setItem("token", newAccessToken);
-            setUser(userData);
+            dispatch(setUser(userData));
           } catch (error) {
             console.warn("Session refresh on mount failed:", error.message);
-            localStorage.removeItem("token");
-            setUser(null);
+            dispatch(logoutUser());
           }
         }
       }
-      setLoading(false);
+      dispatch(setLoading(false));
     };
 
     verifySession();
-  }, []);
+  }, [dispatch]);
 
   const login = async (email, password) => {
     const response = await api.post("/auth/login", { email, password });
     const { token, user: userData } = response.data;
     localStorage.setItem("token", token);
-    setUser(userData);
+    dispatch(setUser(userData));
     return userData;
   };
 
@@ -69,7 +69,7 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post("/auth/register", { name, email, password });
     const { token, user: userData } = response.data;
     localStorage.setItem("token", token);
-    setUser(userData);
+    dispatch(setUser(userData));
     return userData;
   };
 
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post("/auth/google", { credential });
     const { token, user: userData } = response.data;
     localStorage.setItem("token", token);
-    setUser(userData);
+    dispatch(setUser(userData));
     return userData;
   };
 
@@ -87,8 +87,7 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.warn("Failed to notify logout on backend:", e.message);
     }
-    localStorage.removeItem("token");
-    setUser(null);
+    dispatch(logoutUser());
   };
 
   return (
@@ -96,7 +95,7 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         loading,
-        isAuthenticated: !!user,
+        isAuthenticated,
         login,
         register,
         googleLogin,
@@ -117,3 +116,4 @@ export const useAuth = () => {
 };
 
 export default AuthContext;
+

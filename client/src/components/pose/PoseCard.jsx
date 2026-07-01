@@ -74,13 +74,21 @@ const PoseCard = ({ pose, index }) => {
           type="button"
           className="absolute top-3 right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm z-10"
           onClick={handleSave}
-          whileTap={{ scale: 1.4 }}
-          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.1 }}
+          transition={{ type: "spring", stiffness: 400, damping: 17 }}
         >
-          <Heart
-            size={16}
-            className={isSaved ? "fill-primary text-primary" : "text-textSecondary"}
-          />
+          <motion.div
+            key={isSaved ? "saved" : "unsaved"}
+            initial={{ scale: 0.8 }}
+            animate={{ scale: [0.8, 1.35, 1] }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+          >
+            <Heart
+              size={16}
+              className={isSaved ? "fill-primary text-primary" : "text-textSecondary"}
+            />
+          </motion.div>
         </motion.button>
 
         {/* Hover overlay (ZONE 2) */}
@@ -109,6 +117,38 @@ const PoseCard = ({ pose, index }) => {
           <TagPill label={pose.category} />
           {pose.peopleCount && <TagPill label={pose.peopleCount} />}
         </div>
+
+        {/* Description */}
+        {pose.description && (
+          <p className="text-xs text-textSecondary font-light line-clamp-2 mt-2.5 leading-relaxed">
+            {pose.description}
+          </p>
+        )}
+
+        {/* Steps Preview */}
+        {pose.steps && pose.steps.length > 0 && (
+          <div className="mt-3 bg-[#FAFAF8] p-2.5 rounded-sm border border-border space-y-1">
+            <span className="text-[9px] uppercase font-bold text-textMuted block mb-0.5">Quick Steps:</span>
+            {pose.steps.slice(0, 2).map((step, idx) => (
+              <div key={idx} className="text-[11px] text-textSecondary flex gap-1 items-start leading-tight">
+                <span className="text-primary font-semibold shrink-0">{idx + 1}.</span>
+                <span className="line-clamp-1"><span className="font-medium text-textPrimary">{step.label || `Step ${idx+1}`}:</span> {step.description}</span>
+              </div>
+            ))}
+            {pose.steps.length > 2 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/pose/${poseId}`);
+                }}
+                className="text-[9px] font-semibold text-primary hover:text-primaryDark block mt-1 transition-colors"
+              >
+                + {pose.steps.length - 2} more step{pose.steps.length - 2 > 1 ? "s" : ""}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Footer (ZONE 5) */}
         <div className="flex items-center justify-between mt-auto pt-3 border-t border-border">

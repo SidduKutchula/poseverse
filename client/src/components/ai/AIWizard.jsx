@@ -7,6 +7,7 @@ import { useToast } from "../../context/ToastContext";
 import { useMoodBoard } from "../../context/MoodBoardContext";
 import { useNavigate } from "react-router-dom";
 import { trackEvent } from "../../utils/analytics";
+import TypewriterText from "../ui/TypewriterText";
 
 const WizardCard = ({ label, emoji, selected, onClick }) => (
   <motion.div
@@ -31,6 +32,7 @@ const AIWizard = () => {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward
   const [selections, setSelections] = useState({
     occasion: "",
     location: "Outdoor", // Indoor / Outdoor / Both
@@ -110,6 +112,7 @@ const AIWizard = () => {
       return showToast("Please pick experience and timing", "info");
     }
 
+    setDirection(1);
     const nextVal = step + 1;
     setStep(nextVal);
 
@@ -119,6 +122,7 @@ const AIWizard = () => {
   };
 
   const prevStep = () => {
+    setDirection(-1);
     setStep((prev) => Math.max(1, prev - 1));
   };
 
@@ -309,8 +313,8 @@ const AIWizard = () => {
           return (
             <div className="flex flex-col items-center justify-center py-20 space-y-4">
               <RefreshCw size={40} className="text-primary animate-spin" />
-              <p className="text-lg font-serif italic text-primary animate-pulse">
-                {loadingText}
+              <p className="text-lg font-serif italic text-primary min-h-[1.75rem]">
+                <TypewriterText text={loadingText} />
               </p>
             </div>
           );
@@ -401,13 +405,14 @@ const AIWizard = () => {
 
       {/* Main Wizard Form Wrapper with Slide transitions */}
       <div className="overflow-hidden min-h-[300px]">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
-            initial={{ opacity: 0, x: 50 }}
+            custom={direction}
+            initial={(d) => ({ opacity: 0, x: d * 100 })}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
+            exit={(d) => ({ opacity: 0, x: -d * 100 })}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
             {renderStepContent()}
           </motion.div>
